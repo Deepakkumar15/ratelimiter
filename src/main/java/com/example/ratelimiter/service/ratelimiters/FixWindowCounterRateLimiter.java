@@ -40,8 +40,7 @@ public class FixWindowCounterRateLimiter {
         String key = getApiUniqueKey(apiName, currentBucketNumber);
         long requestReceivedWithinCurrentWindow = rateLimitCounterMap.getOrDefault(key, 0L);
 
-        // new window started
-        if (requestReceivedWithinCurrentWindow == 0) {
+        if (isNewWindowStarted(apiName, currentBucketNumber)) {
             handleNewWindowTransition(apiName, currentBucketNumber);
         }
 
@@ -59,6 +58,10 @@ public class FixWindowCounterRateLimiter {
 
     private String getApiUniqueKey(ApiName apiName, String currentBucketNumber) {
         return "RATE_LIMIT::" + apiName.name() + "::" + currentBucketNumber;
+    }
+
+    private boolean isNewWindowStarted(ApiName apiName, String currentBucketNumber) {
+        return !currentBucketNumber.equals(bucketRegistryMap.get(apiName));
     }
 
     @Async
