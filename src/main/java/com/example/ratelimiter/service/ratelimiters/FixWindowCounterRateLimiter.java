@@ -2,8 +2,10 @@ package com.example.ratelimiter.service.ratelimiters;
 
 import com.example.ratelimiter.configurations.ratelimiter.FixWindowRateLimiterConfigs;
 import com.example.ratelimiter.domain.enums.ApiName;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -13,9 +15,11 @@ import java.util.Map;
 @Component
 public class FixWindowCounterRateLimiter {
     private static Map<String, Long> rateLimitCounterMap;
+    private static EnumMap<ApiName, String> bucketRegistryMap;
 
     public FixWindowCounterRateLimiter() {
         this.rateLimitCounterMap = new HashMap<>();
+        this.bucketRegistryMap = new EnumMap<>(ApiName.class);
     }
 
 
@@ -32,8 +36,15 @@ public class FixWindowCounterRateLimiter {
 
         long windowInterval = rateLimitConfigs.get(0);
         long maxRequestAllowed = rateLimitConfigs.get(1);
-        String key = "RATE_LIMIT::" + apiName.name() + "::" + getBucketKey(windowInterval);
+        String currentBucketNumber = getBucketKey(windowInterval);
+        String key = getApiUniqueKey(apiName, currentBucketNumber);
         long requestReceivedWithinCurrentWindow = rateLimitCounterMap.getOrDefault(key, 0L);
+
+        // new window started
+        if (requestReceivedWithinCurrentWindow == 0) {
+            handleNewWindowTransition(apiName, currentBucketNumber);
+        }
+
         // update the request counter for currently running window
         rateLimitCounterMap.put(key, requestReceivedWithinCurrentWindow + 1);
 
@@ -44,5 +55,20 @@ public class FixWindowCounterRateLimiter {
     private String getBucketKey(long windowInterval) {
         long bucketNumber = System.currentTimeMillis() / (windowInterval * 1000);
         return Long.toString(bucketNumber);
+    }
+
+    private String getApiUniqueKey(ApiName apiName, String currentBucketNumber) {
+        return "RATE_LIMIT::" + apiName.name() + "::" + currentBucketNumber;
+    }
+
+    @Async
+    private void handleNewWindowTransition(ApiName apiName, String newBucketNumber) {
+        // clean old bucket from rateLimitCounterMap if present
+        if (bucketRegistryMap.containsKey(apiName)) {
+            rateLimitCounterMap.remove(getApiUniqueKey(apiName, bucketRegistryMap.get(apiName)));
+        }
+
+        // update new bucket number within bucketRegistryMap
+        bucketRegistryMap.put(apiName, newBucketNumber);
     }
 }
